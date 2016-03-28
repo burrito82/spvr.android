@@ -41,8 +41,10 @@ public class SensorForwarder implements SensorEventListener, Runnable
     {
         try {
             mInetAddress = InetAddress.getByName("192.168.192.57");
+            //mInetAddress = InetAddress.getByName("192.168.42.20");
             mSocket = new DatagramSocket();//4321, mInetAddress);
-            //mSocket.setSendBufferSize(4 * 4);
+            mSocket.setSendBufferSize(4 * 4);
+            mSocket.setReuseAddress(true);
         } catch (IOException e) {
             Toast.makeText(mContext, "Could not initialize connection!", Toast.LENGTH_SHORT);
             Log.d(MainActivity.SMARTVR_TAG, "Could not initialize connection!");
@@ -78,21 +80,65 @@ public class SensorForwarder implements SensorEventListener, Runnable
 
     private float m_afValues[];
     private float m_afPreviousValues[];
+    private float m_afYrp[] = new float[3];
+    private float m_afEuler[] = new float[3];
     private boolean m_bNewValue;
     final StringBuilder mStringBuilder = new StringBuilder();
 
     @Override
     public void onSensorChanged(SensorEvent sensorEvent) {
+        //m_afValues = sensorEvent.values;
+        m_afValues = m_afEuler;
+        m_afYrp[0] = (sensorEvent.values[0] + 180.0f) % 360.0f;
+        m_afYrp[1] = sensorEvent.values[1];
+        m_afYrp[2] = sensorEvent.values[2];
+        Yrp2Euler(m_afYrp, m_afEuler);
         mStringBuilder.setLength(0);
-        mStringBuilder.append("{\n").append(sensorEvent.values[0]).append(",\n")
-                .append(sensorEvent.values[1]).append(",\n")
-                .append(sensorEvent.values[2]).append(",\n")
+        mStringBuilder.append("{\n").append(m_afValues[0]).append(",\n")
+                .append(m_afValues[1]).append(",\n")
+                .append(m_afValues[2]).append(",\n")
                 //.append(sensorEvent.values[3]).append("\n")
                 .append('}');
-        m_afValues = sensorEvent.values;
         //SendDirection(m_afValues);
         mTxtLabel.setText(mStringBuilder.toString());
         m_bNewValue = true;
+    }
+
+    private static void Yrp2Euler(float yrp[], float euler[])
+    {
+        final double conv = Math.PI / 180.0;
+
+        final double yaw = conv * yrp[0];
+        double roll = conv * yrp[1];
+        double pitch = conv * (90.0 - yrp[2]);
+
+        final boolean bLookingDown = (-90.0 < yrp[1]) && (yrp[1] < 90.0);
+        if (bLookingDown)
+        {
+            pitch = conv * (yrp[2] - 90.0);
+        }
+        else
+        {
+            if (roll > 0.0)
+            {
+                roll = conv * (180.0 - yrp[1]);
+            }
+            else
+            {
+                roll = conv * -(180.0 + yrp[1]);
+            }
+        }
+
+        /*
+        roll < -90 || roll > 90 => looking up
+        -90 < roll < 90 => looking down
+        roll > 0 => left down right up
+        roll = 0 == -0 == 180 == -180
+         */
+
+        euler[0] = (float) -yaw;
+        euler[1] = (float) roll;
+        euler[2] = (float) pitch;
     }
 
     @Override
@@ -102,10 +148,40 @@ public class SensorForwarder implements SensorEventListener, Runnable
 
     public static void Euler2Quaternion(final float euler[], final float quat[])
     {
-        final float yaw = (euler[0] > 180.0f) ? (euler[0] - 180.0f) : (euler[0] + 180.0f);
+        final double yaw = euler[0];
+        final double roll = euler[1];
+        final double pitch = euler[2];
+
+        final double cyaw = Math.cos(yaw * 0.5);
+        final double croll = Math.cos(roll * 0.5);
+        final double cpitch = Math.cos(pitch * 0.5);
+
+        final double syaw = Math.sin(yaw * 0.5);
+        final double sroll = Math.sin(roll * 0.5);
+        final double spitch = Math.sin(pitch * 0.5);
+
+        final double cyaw_cpitch = cyaw * cpitch;
+        final double syaw_spitch = syaw * spitch;
+        final double cyaw_spitch = cyaw * spitch;
+        final double syaw_cpitch = syaw * cpitch;
+
+        final double w = cyaw_cpitch * croll + syaw_spitch * sroll;
+        final double x = cyaw_spitch * croll + syaw_cpitch * sroll;
+        final double y = syaw_cpitch * croll - cyaw_spitch * sroll;
+        final double z = cyaw_cpitch * sroll - syaw_spitch * croll;
+
+        quat[0] = (float)w;
+        quat[1] = (float)x;
+        quat[2] = (float)y;
+        quat[3] = (float)z;
+    }
+
+    public static void Euler2Quaternion2(final float euler[], final float quat[])
+    {
+        final float yaw = euler[0];
         final float roll = euler[1];
         final float pitch = euler[2];
-        double phi = yaw / 180.0 * Math.PI; // a, [0, 2pi], azimuth/yaw
+        double phi = (yaw) / 180.0 * Math.PI; // a, [0, 2pi], azimuth/yaw
         double theta = roll / 180.0 * Math.PI; // b, [-pi/2, pi/2], roll {0}
         double psi = (90.0 - pitch) / 180.0 * Math.PI; // g, [-pi/2, pi/2], pitch {90}
         // looking up:
@@ -119,7 +195,14 @@ public class SensorForwarder implements SensorEventListener, Runnable
             {
                 theta = (180.0 + roll) / 180.0 * Math.PI;
             }
-            psi = -(90.0 - pitch) / 180.0 * Math.PI;
+            psi = (pitch - 90.0) / 180.0 * Math.PI;
+        }
+        else
+        {
+            if (yaw > 180.0 && Math.abs(roll) > 90.0)
+            {
+                psi = (pitch - 90.0) / 180.0 * Math.PI;
+            }
         }
         final double rphi = -psi;
         final double rtheta = -phi;
