@@ -13,6 +13,7 @@ import java.io.IOException;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
 import java.net.InetAddress;
+import java.net.UnknownHostException;
 import java.nio.ByteBuffer;
 
 /**
@@ -34,7 +35,6 @@ public class SensorForwarder implements SensorEventListener, Runnable
         mTxtLabel = txtLabel;
         final byte buffer[] = ByteBuffer.allocate(4 * 4).array();
         mPacket = new DatagramPacket(buffer, buffer.length, mInetAddress, 4321);
-        m_afPreviousValues = new float[3];
     }
 
     public void InitNetwork()
@@ -43,7 +43,7 @@ public class SensorForwarder implements SensorEventListener, Runnable
             mInetAddress = InetAddress.getByName("192.168.192.57");
             //mInetAddress = InetAddress.getByName("192.168.42.20");
             mSocket = new DatagramSocket();//4321, mInetAddress);
-            mSocket.setSendBufferSize(4 * 4);
+            mSocket.setSendBufferSize(4 * 5);
             mSocket.setReuseAddress(true);
         } catch (IOException e) {
             Toast.makeText(mContext, "Could not initialize connection!", Toast.LENGTH_SHORT);
@@ -52,56 +52,72 @@ public class SensorForwarder implements SensorEventListener, Runnable
         }
     }
 
-    public void SendDirection(float[] afValues) {
-        if (mSocket != null && mPacket != null) {// && mSocket.isConnected()) {
-            final byte buffer[] = ByteBuffer.allocate(4 * 4)
+    public void SetIpAddress(String strIpAddress) throws UnknownHostException {
+        mInetAddress = InetAddress.getByName(strIpAddress);
+    }
+
+    private int m_iNextMsg = 0;
+
+    public void SendDirection(float[] afValues) throws IOException {
+        if (m_iNextMsg < 0)
+        {
+            m_iNextMsg = 0;
+        }
+        if (mSocket != null && mPacket != null) {
+            final byte buffer[] = ByteBuffer.allocate(4 * 5)
                     .putFloat(afValues[0])
                     .putFloat(afValues[1])
                     .putFloat(afValues[2])
                     .putFloat(afValues[3])
+                    .putInt(m_iNextMsg++)
                     .array();
 
-            try {
-                /*final OutputStream os = mSocket.getOutputStream();
-                os.write(buffer);
-                os.flush();*/
-                //mSocket.send(new DatagramPacket(buffer, buffer.length, mInetAddress, 4321));
-                mPacket.setData(buffer, 0, buffer.length);
-                mPacket.setAddress(mInetAddress);
-                mPacket.setPort(4321);
-                mSocket.send(mPacket);
-            } catch (IOException e) {
-                Toast.makeText(mContext, "Could not send direction!", Toast.LENGTH_SHORT);
-                Log.d(MainActivity.SMARTVR_TAG, "Could not send direction!");
-                e.printStackTrace();
-            }
+            mPacket.setData(buffer, 0, buffer.length);
+            mPacket.setAddress(mInetAddress);
+            mPacket.setPort(4321);
+            mSocket.send(mPacket);
         }
     }
 
-    private float m_afValues[];
-    private float m_afPreviousValues[];
     private float m_afYrp[] = new float[3];
-    private float m_afEuler[] = new float[3];
+    private float m_afEulerUncalibrated[] = new float[3];
+    private float m_afEulerCalibrated[] = new float[3];
     private boolean m_bNewValue;
     final StringBuilder mStringBuilder = new StringBuilder();
 
+    private float m_afCalib[] = new float[3];
+
+    public void DoCalibration()
+    {
+        m_afCalib[0] = m_afEulerUncalibrated[0];
+        m_afCalib[1] = 0.0f;//m_afEulerUncalibrated[1];
+        m_afCalib[2] = 0.0f;//m_afEulerUncalibrated[2];
+    }
+
+    private void Calibrate()
+    {
+        m_afEulerCalibrated[0] = m_afEulerUncalibrated[0] - m_afCalib[0];
+        m_afEulerCalibrated[1] = m_afEulerUncalibrated[1] - m_afCalib[1];
+        m_afEulerCalibrated[2] = m_afEulerUncalibrated[2] - m_afCalib[2];
+    }
+
     @Override
     public void onSensorChanged(SensorEvent sensorEvent) {
-        //m_afValues = sensorEvent.values;
-        m_afValues = m_afEuler;
-        m_afYrp[0] = (sensorEvent.values[0] + 180.0f) % 360.0f;
+        m_afYrp[0] = sensorEvent.values[0];
         m_afYrp[1] = sensorEvent.values[1];
         m_afYrp[2] = sensorEvent.values[2];
-        Yrp2Euler(m_afYrp, m_afEuler);
-        mStringBuilder.setLength(0);
-        mStringBuilder.append("{\n").append(m_afValues[0]).append(",\n")
-                .append(m_afValues[1]).append(",\n")
-                .append(m_afValues[2]).append(",\n")
-                //.append(sensorEvent.values[3]).append("\n")
-                .append('}');
-        //SendDirection(m_afValues);
-        mTxtLabel.setText(mStringBuilder.toString());
+
+        Yrp2Euler(m_afYrp, m_afEulerUncalibrated);
+        Calibrate();
         m_bNewValue = true;
+
+        mStringBuilder.setLength(0);
+        mStringBuilder.append("{\n")
+                .append(m_afEulerCalibrated[0]).append(",\n")
+                .append(m_afEulerCalibrated[1]).append(",\n")
+                .append(m_afEulerCalibrated[2]).append("\n")
+                .append('}');
+        mTxtLabel.setText(mStringBuilder.toString());
     }
 
     private static void Yrp2Euler(float yrp[], float euler[])
@@ -146,7 +162,7 @@ public class SensorForwarder implements SensorEventListener, Runnable
 
     }
 
-    public static void Euler2Quaternion(final float euler[], final float quat[])
+    public void Euler2Quaternion(final float euler[], final float quat[])
     {
         final double yaw = euler[0];
         final double roll = euler[1];
@@ -252,25 +268,23 @@ public class SensorForwarder implements SensorEventListener, Runnable
     public void run() {
         InitNetwork();
         final float qRotation[] = new float[4];
-        while (true)
-        {
-            if (m_afValues != null && m_bNewValue)
-            {
-                m_bNewValue = false;
-                /*if (m_afValues[0] != m_afPreviousValues[0]
-                    || m_afValues[1] != m_afPreviousValues[1]
-                    || m_afValues[2] != m_afPreviousValues[2])*/
-                {
-                    Euler2Quaternion(m_afValues, qRotation);
-                    SendDirection(qRotation);
-                    //m_afPreviousValues = m_afValues.clone();
+        while (true) {
+            try {
+                while (true) {
+                    if (m_bNewValue)
+                    {
+                        m_bNewValue = false;
+                        Euler2Quaternion(m_afEulerCalibrated, qRotation);
+                        SendDirection(qRotation);
+                    }
+                    //Thread.currentThread().sleep(1, 0);
                 }
-                try {
-                    Thread.currentThread().sleep(5, 0);
-                } catch (InterruptedException e) {
-                    e.printStackTrace();
-                }
+            } catch (IOException e) {
+                e.printStackTrace();
             }
+            /*catch (InterruptedException e) {
+                e.printStackTrace();
+            }*/
         }
     }
 }

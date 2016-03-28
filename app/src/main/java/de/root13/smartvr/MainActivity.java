@@ -2,20 +2,17 @@ package de.root13.smartvr;
 
 import android.content.Context;
 import android.hardware.Sensor;
-import android.hardware.SensorEvent;
-import android.hardware.SensorEventListener;
 import android.hardware.SensorManager;
-import android.os.StrictMode;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
-import android.util.Log;
+import android.view.View;
+import android.widget.Button;
+import android.widget.EditText;
 import android.widget.TextView;
+import android.widget.Toast;
 
-import java.io.IOException;
 import java.net.Socket;
-import java.nio.ByteBuffer;
-
-import de.root13.smartvr.R;
+import java.net.UnknownHostException;
 
 public class MainActivity extends AppCompatActivity implements Runnable {
 
@@ -37,6 +34,26 @@ public class MainActivity extends AppCompatActivity implements Runnable {
         //mNetworkThread = new Thread(this);
         //mNetworkThread.start();
         InitSensorListener();
+
+        final EditText editTxtIp = (EditText) findViewById(R.id.editTxtIp);
+        final Button btnStart = (Button) findViewById(R.id.btnStart);
+        btnStart.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                try {
+                    mSensorForwarder.SetIpAddress(editTxtIp.getText().toString());
+                } catch (UnknownHostException e) {
+                    Toast.makeText(getApplicationContext(), "Could not set ip!", Toast.LENGTH_SHORT);
+                }
+            }
+        });
+        final Button btnCalibrate = (Button) findViewById(R.id.btnCalibrate);
+        btnCalibrate.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                mSensorForwarder.DoCalibration();
+            }
+        });
     }
     TextView mTxtLabel;
 
