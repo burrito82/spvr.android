@@ -266,7 +266,7 @@ public class SensorForwarder implements SensorEventListener, Runnable
                     //m_afPreviousValues = m_afValues.clone();
                 }
                 try {
-                    Thread.currentThread().sleep(1, 0);
+                    Thread.currentThread().sleep(5, 0);
                 } catch (InterruptedException e) {
                     e.printStackTrace();
                 }
