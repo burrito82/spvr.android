@@ -54,14 +54,17 @@ public class SensorForwarder implements SensorEventListener, Runnable
 
     public void InitNetwork()
     {
-        try {
-            //mInetAddress = InetAddress.getByName("192.168.192.57");
-            mSocket = new DatagramSocket();//4321, mInetAddress);
-            mSocket.setSendBufferSize(4 * 5);
-            mSocket.setReuseAddress(true);
-        } catch (IOException e) {
-            Log.d(MainActivity.SMARTVR_TAG, "Could not initialize connection!");
-            e.printStackTrace();
+        if (mSocket == null)
+        {
+            try {
+                //mInetAddress = InetAddress.getByName("192.168.192.57");
+                mSocket = new DatagramSocket();//4321, mInetAddress);
+                mSocket.setSendBufferSize(4 * 5);
+                mSocket.setReuseAddress(true);
+            } catch (IOException e) {
+                Log.d(MainActivity.SMARTVR_TAG, "Could not initialize connection!");
+                e.printStackTrace();
+            }
         }
     }
 
