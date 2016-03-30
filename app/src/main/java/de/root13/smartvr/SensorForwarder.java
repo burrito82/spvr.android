@@ -14,6 +14,7 @@ import java.net.DatagramSocket;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
 import java.nio.ByteBuffer;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * Created by Somebody on 26.03.2016.
@@ -44,7 +45,7 @@ public class SensorForwarder implements SensorEventListener, Runnable
 
     public void SetIsSending(boolean bIsSending)
     {
-        if (!m_bIsSending && mInetAddress != null)
+        if (!m_bIsSending && bIsSending && mInetAddress != null)
         {
             InitNetwork();
         }
@@ -101,11 +102,11 @@ public class SensorForwarder implements SensorEventListener, Runnable
     private final StringBuilder mStringBuilder = new StringBuilder();
 
     private float m_afCalib[] = new float[3];
-    private boolean m_bCalibrated;
+    private AtomicBoolean m_bIsCalibrated = new AtomicBoolean(false);
 
     public void ResetCalibration()
     {
-        m_bCalibrated = false;
+        m_bIsCalibrated.set(false);
     }
 
     private void SetCalibration()
@@ -113,7 +114,6 @@ public class SensorForwarder implements SensorEventListener, Runnable
         m_afCalib[0] = m_afEulerUncalibrated[0];
         m_afCalib[1] = 0.0f;//m_afEulerUncalibrated[1];
         m_afCalib[2] = 0.0f;//m_afEulerUncalibrated[2];
-        m_bCalibrated = true;
     }
 
     private void Calibrate()
@@ -133,7 +133,7 @@ public class SensorForwarder implements SensorEventListener, Runnable
 
         if (m_bIsSending) {
             Yrp2Euler(m_afYrp, m_afEulerUncalibrated);
-            if (!m_bCalibrated)
+            if (m_bIsCalibrated.compareAndSet(false, true))
             {
                 SetCalibration();
             }
