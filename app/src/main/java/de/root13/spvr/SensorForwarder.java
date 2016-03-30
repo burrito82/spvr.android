@@ -1,4 +1,4 @@
-package de.root13.smartvr;
+package de.root13.spvr;
 
 import android.content.Context;
 import android.hardware.Sensor;
@@ -62,7 +62,7 @@ public class SensorForwarder implements SensorEventListener, Runnable
                 mSocket.setSendBufferSize(4 * 5);
                 mSocket.setReuseAddress(true);
             } catch (IOException e) {
-                Log.d(MainActivity.SMARTVR_TAG, "Could not initialize connection!");
+                Log.d(MainActivity.SPVR_TAG, "Could not initialize connection!");
                 e.printStackTrace();
             }
         }

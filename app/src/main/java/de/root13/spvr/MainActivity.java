@@ -1,4 +1,4 @@
-package de.root13.smartvr;
+package de.root13.spvr;
 
 import android.content.Context;
 import android.hardware.Sensor;
@@ -12,12 +12,11 @@ import android.widget.EditText;
 import android.widget.TextView;
 import android.widget.Toast;
 
-import java.net.Socket;
 import java.net.UnknownHostException;
 
 public class MainActivity extends AppCompatActivity {
 
-    public static final String SMARTVR_TAG = "smartvr";
+    public static final String SPVR_TAG = "spvr";
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {

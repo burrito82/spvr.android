@@ -1,4 +1,4 @@
-package de.root13.smartvr;
+package de.root13.spvr;
 
 import org.junit.Test;
 

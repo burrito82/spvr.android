@@ -1,4 +1,4 @@
-package de.root13.smartvr;
+package de.root13.spvr;
 
 import android.app.Application;
 import android.test.ApplicationTestCase;
