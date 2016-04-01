@@ -17,7 +17,7 @@ import java.net.UnknownHostException;
 public class MainActivity extends AppCompatActivity {
 
     public static final String SPVR_TAG = "spvr";
-    private SensorForwarderTcp mSensorForwarder;
+    private SensorForwarder mSensorForwarder;
     private SensorManager mSensorManager;
 
     private Sensor mSensor;
@@ -65,7 +65,7 @@ public class MainActivity extends AppCompatActivity {
     private void InitSensorListener() {
         if (mSensorForwarder == null) {
             final TextView txtLabel = (TextView) findViewById(R.id.txtLabel);
-            mSensorForwarder = new SensorForwarderTcp(this, mSensorManager, txtLabel);
+            mSensorForwarder = new SensorForwarder(this, mSensorManager, txtLabel);
             mSensorManager.registerListener(mSensorForwarder, mSensor, 1);
         }
     }
