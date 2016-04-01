@@ -19,16 +19,24 @@ import java.util.concurrent.atomic.AtomicBoolean;
 /**
  * Created by Somebody on 26.03.2016.
  */
-public class SensorForwarder implements SensorEventListener, Runnable
-{
+public class SensorForwarder implements SensorEventListener, Runnable {
+    private final float m_afYrp[] = new float[3];
+    private final float m_afEulerUncalibrated[] = new float[3];
+    private final float m_afEulerCalibrated[] = new float[3];
+    private final float qRotation[] = new float[4];
+    private final StringBuilder mStringBuilder = new StringBuilder();
     private DatagramSocket mSocket;
     private DatagramPacket mPacket;
     private InetAddress mInetAddress;
-
     private SensorManager mSensorManager;
     private Context mContext;
     private TextView mTxtLabel;
-
+    // UDP => drop packets received too late
+    private int m_iNextMsg = 0;
+    private boolean m_bNewValue;
+    private boolean m_bIsSending;
+    private float m_afCalib[] = new float[3];
+    private AtomicBoolean m_bIsCalibrated = new AtomicBoolean(false);
     public SensorForwarder(final Context context, final SensorManager sensorManager, final TextView txtLabel) {
         mContext = context;
         mSensorManager = sensorManager;
@@ -38,24 +46,49 @@ public class SensorForwarder implements SensorEventListener, Runnable
         m_bIsSending = false;
     }
 
-    public boolean GetIsSending()
-    {
+    private static void Yrp2Euler(float yrp[], float euler[]) {
+        final double conv = Math.PI / 180.0;
+
+        final double yaw = conv * yrp[0];
+        double roll = conv * yrp[1];
+        double pitch = conv * (90.0 - yrp[2]);
+
+        final boolean bLookingDown = (-90.0 < yrp[1]) && (yrp[1] < 90.0);
+        if (bLookingDown) {
+            pitch = conv * (yrp[2] - 90.0);
+        } else {
+            if (roll > 0.0) {
+                roll = conv * (180.0 - yrp[1]);
+            } else {
+                roll = conv * -(180.0 + yrp[1]);
+            }
+        }
+
+        /*
+        roll < -90 || roll > 90 => looking up
+        -90 < roll < 90 => looking down
+        roll > 0 => left down right up
+        roll = 0 == -0 == 180 == -180
+         */
+
+        euler[0] = (float) -yaw;
+        euler[1] = (float) roll;
+        euler[2] = (float) pitch;
+    }
+
+    public boolean GetIsSending() {
         return m_bIsSending;
     }
 
-    public void SetIsSending(boolean bIsSending)
-    {
-        if (!m_bIsSending && bIsSending && mInetAddress != null)
-        {
+    public void SetIsSending(boolean bIsSending) {
+        if (!m_bIsSending && bIsSending && mInetAddress != null) {
             InitNetwork();
         }
         m_bIsSending = bIsSending;
     }
 
-    public void InitNetwork()
-    {
-        if (mSocket == null)
-        {
+    public void InitNetwork() {
+        if (mSocket == null) {
             try {
                 //mInetAddress = InetAddress.getByName("192.168.192.57");
                 mSocket = new DatagramSocket();//4321, mInetAddress);
@@ -72,12 +105,8 @@ public class SensorForwarder implements SensorEventListener, Runnable
         mInetAddress = InetAddress.getByName(strIpAddress);
     }
 
-    // UDP => drop packets received too late
-    private int m_iNextMsg = 0;
-
     public void SendDirection(final float afValues[]) throws IOException {
-        if (m_iNextMsg < 0)
-        {
+        if (m_iNextMsg < 0) {
             m_iNextMsg = 0;
         }
         if (mSocket != null && mPacket != null) {
@@ -96,31 +125,17 @@ public class SensorForwarder implements SensorEventListener, Runnable
         }
     }
 
-    private final float m_afYrp[] = new float[3];
-    private final float m_afEulerUncalibrated[] = new float[3];
-    private final float m_afEulerCalibrated[] = new float[3];
-    private final float qRotation[] = new float[4];
-    private boolean m_bNewValue;
-    private boolean m_bIsSending;
-    private final StringBuilder mStringBuilder = new StringBuilder();
-
-    private float m_afCalib[] = new float[3];
-    private AtomicBoolean m_bIsCalibrated = new AtomicBoolean(false);
-
-    public void ResetCalibration()
-    {
+    public void ResetCalibration() {
         m_bIsCalibrated.set(false);
     }
 
-    private void SetCalibration()
-    {
+    private void SetCalibration() {
         m_afCalib[0] = m_afEulerUncalibrated[0];
         m_afCalib[1] = 0.0f;//m_afEulerUncalibrated[1];
         m_afCalib[2] = 0.0f;//m_afEulerUncalibrated[2];
     }
 
-    private void Calibrate()
-    {
+    private void Calibrate() {
         m_afEulerCalibrated[0] = m_afEulerUncalibrated[0] - m_afCalib[0];
         m_afEulerCalibrated[1] = m_afEulerUncalibrated[1] - m_afCalib[1];
         m_afEulerCalibrated[2] = m_afEulerUncalibrated[2] - m_afCalib[2];
@@ -136,8 +151,7 @@ public class SensorForwarder implements SensorEventListener, Runnable
 
         if (m_bIsSending) {
             Yrp2Euler(m_afYrp, m_afEulerUncalibrated);
-            if (m_bIsCalibrated.compareAndSet(false, true))
-            {
+            if (m_bIsCalibrated.compareAndSet(false, true)) {
                 SetCalibration();
             }
             Calibrate();
@@ -158,50 +172,12 @@ public class SensorForwarder implements SensorEventListener, Runnable
         mTxtLabel.setText(mStringBuilder.toString());
     }
 
-    private static void Yrp2Euler(float yrp[], float euler[])
-    {
-        final double conv = Math.PI / 180.0;
-
-        final double yaw = conv * yrp[0];
-        double roll = conv * yrp[1];
-        double pitch = conv * (90.0 - yrp[2]);
-
-        final boolean bLookingDown = (-90.0 < yrp[1]) && (yrp[1] < 90.0);
-        if (bLookingDown)
-        {
-            pitch = conv * (yrp[2] - 90.0);
-        }
-        else
-        {
-            if (roll > 0.0)
-            {
-                roll = conv * (180.0 - yrp[1]);
-            }
-            else
-            {
-                roll = conv * -(180.0 + yrp[1]);
-            }
-        }
-
-        /*
-        roll < -90 || roll > 90 => looking up
-        -90 < roll < 90 => looking down
-        roll > 0 => left down right up
-        roll = 0 == -0 == 180 == -180
-         */
-
-        euler[0] = (float) -yaw;
-        euler[1] = (float) roll;
-        euler[2] = (float) pitch;
-    }
-
     @Override
     public void onAccuracyChanged(Sensor sensor, int i) {
 
     }
 
-    public void Euler2Quaternion(final float euler[], final float quat[])
-    {
+    public void Euler2Quaternion(final float euler[], final float quat[]) {
         final double yaw = euler[0];
         final double roll = euler[1];
         final double pitch = euler[2];
@@ -224,10 +200,10 @@ public class SensorForwarder implements SensorEventListener, Runnable
         final double y = syaw_cpitch * croll - cyaw_spitch * sroll;
         final double z = cyaw_cpitch * sroll - syaw_spitch * croll;
 
-        quat[0] = (float)w;
-        quat[1] = (float)x;
-        quat[2] = (float)y;
-        quat[3] = (float)z;
+        quat[0] = (float) w;
+        quat[1] = (float) x;
+        quat[2] = (float) y;
+        quat[3] = (float) z;
     }
 
     @Override
@@ -236,8 +212,7 @@ public class SensorForwarder implements SensorEventListener, Runnable
         while (true) {
             try {
                 while (true) {
-                    if (m_bNewValue)
-                    {
+                    if (m_bNewValue) {
                         m_bNewValue = false;
 
                         Yrp2Euler(m_afYrp, m_afEulerUncalibrated);
